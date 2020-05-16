@@ -2,6 +2,8 @@ package com.ricko.firecracker.objects
 
 import android.widget.ImageView
 import com.google.android.material.imageview.ShapeableImageView
+import kotlin.math.cos
+import kotlin.math.sin
 
 data class Meteor(
     val size: Int,
@@ -12,4 +14,10 @@ data class Meteor(
     var currentY: Float,
     val meteorView: ShapeableImageView
 ) {
+    fun moveMeteor(){
+        currentX += speed * cos(direction)
+        currentY += speed * sin(direction)
+        meteorView.x = currentX
+        meteorView.y = currentY
+    }
 }

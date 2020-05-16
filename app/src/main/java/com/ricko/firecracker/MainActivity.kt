@@ -1,18 +1,16 @@
 package com.ricko.firecracker
 
-import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.os.Handler
 import android.util.DisplayMetrics
+import android.view.MotionEvent
 import android.view.View
-import android.view.WindowManager
 import androidx.core.content.ContextCompat
 import com.google.android.material.imageview.ShapeableImageView
+import com.ricko.firecracker.objects.Bullet
 import com.ricko.firecracker.objects.Meteor
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -25,15 +23,18 @@ import kotlin.random.Random
 class MainActivity : AppCompatActivity() {
 
     private val meteors: ArrayList<Meteor> = ArrayList()
+    private val bullets: ArrayList<Bullet> = ArrayList()
 
     private val displayMetrics = DisplayMetrics()
-    private var startStop = false
-    private lateinit var job: Job
+    private var isStarted = false
+    private var gameJob: Job? = null
     private var initialMeteorX = 0f
     private var initialMeteorY = 0f
+    private var clickCount = 0
 
     companion object {
-        const val NUMBER_OF_METEORS = 2000
+        const val NUMBER_OF_METEORS = 50
+        const val GAME_FPS = 60L
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,29 +42,46 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         windowManager.defaultDisplay.getMetrics(displayMetrics)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            window.attributes.layoutInDisplayCutoutMode =
-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-        }
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+//            window.attributes.layoutInDisplayCutoutMode =
+//                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+//        }
         initialMeteorX = displayMetrics.widthPixels / 2f
         createMeteors()
 
         updateBtn.setOnClickListener {
-            startStop = !startStop
-            if (startStop) {
-                job = CoroutineScope(Main).launch {
-                    while (true) {
-                        updateFrame()
-                        delay(30)
-                    }
+            isStarted = !isStarted
+            if (isStarted) {
+                gameJob = CoroutineScope(Main).launch {
+                    gameLoop()
                 }
-            } else job.cancel()
+            }
         }
 
         resetBtn.setOnClickListener {
             resetMeteors()
         }
 
+        gameLayout.setOnTouchListener { view, motionEvent ->
+            if (motionEvent.action == MotionEvent.ACTION_DOWN) {
+                gameJob?.cancel()
+
+                createBullet(motionEvent.x, motionEvent.y)
+                gameJob = CoroutineScope(Main).launch {
+                    gameLoop()
+                }
+            }
+
+            return@setOnTouchListener true
+        }
+
+    }
+
+    private suspend fun gameLoop() {
+        while (isStarted) {
+            updateFrame()
+            delay(1000/GAME_FPS)
+        }
     }
 
     private fun createMeteors() {
@@ -79,7 +97,7 @@ class MainActivity : AppCompatActivity() {
                     Random.nextInt(30, 150) * PI.toFloat() / 180,
                     Random.nextLong(1, 100),
                     initialMeteorX,
-                    -500f,
+                    -50f,
                     meteorView
                 )
             )
@@ -89,10 +107,6 @@ class MainActivity : AppCompatActivity() {
             meteors[i].meteorView.x = meteors[i].currentX
             meteors[i].meteorView.y = meteors[i].currentY
 
-            meteors[i].meteorView.setOnClickListener {
-                gameLayout.removeView(meteors[i].meteorView)
-//                meteors.remove(meteors[i])
-            }
         }
     }
 
@@ -105,31 +119,32 @@ class MainActivity : AppCompatActivity() {
                 if (meteor.direction > 2 * PI.toFloat()) {
                     meteor.direction -= 2 * PI.toFloat()
                 }
-                moveMeteor(meteor)
+                meteor.moveMeteor()
             } else if (meteor.meteorView.x < 0f) {
                 meteor.currentX = 0f
                 meteor.direction = PI.toFloat() - meteor.direction
                 if (meteor.direction < 0) {
                     meteor.direction += 2 * PI.toFloat()
                 }
-                moveMeteor(meteor)
-            }
-            else if (meteor.meteorView.y-meteor.meteorView.layoutParams.height> displayMetrics.heightPixels.toFloat()){
-                meteor.currentY=-300f
-                moveMeteor(meteor)
-            }
-            else {
-                moveMeteor(meteor)
+                meteor.moveMeteor()
+            } else if (meteor.meteorView.y - 150f > displayMetrics.heightPixels.toFloat()) {
+                meteor.currentY = -50f
+                meteor.moveMeteor()
+            } else {
+                meteor.moveMeteor()
             }
 
         }
-    }
 
-    private fun moveMeteor(meteor: Meteor) {
-        meteor.currentX += meteor.speed * cos(meteor.direction)
-        meteor.currentY += meteor.speed * sin(meteor.direction)
-        meteor.meteorView.x = meteor.currentX
-        meteor.meteorView.y = meteor.currentY
+        for (bullet in bullets) {
+            bullet.moveBullet()
+            if (bullet.bulletView.y + bullet.bulletView.layoutParams.height < 0f) {
+                gameLayout.removeView(bullet.bulletView)
+                bullets.remove(bullet)
+                break
+            }
+
+        }
     }
 
     private fun resetMeteors() {
@@ -138,5 +153,26 @@ class MainActivity : AppCompatActivity() {
             meteor.currentY = initialMeteorY
         }
     }
+
+    private fun createBullet(bulletX: Float, bulletY: Float) {
+        val bulletView = ShapeableImageView(this)
+        bulletView.id = View.generateViewId()
+        bulletView.background =
+            ContextCompat.getDrawable(applicationContext, R.drawable.ic_bullet_blue_24dp)
+
+        val bullet = Bullet(
+            10f,
+            5,
+            bulletX,
+            bulletY,
+            bulletView
+        )
+        bullets.add(bullet)
+        val index = bullets.indexOf(bullet)
+        gameLayout.addView(bullets[index].bulletView)
+        bullets[index].setBullet()
+        println(bullets.size)
+    }
 }
+
 
