@@ -7,26 +7,97 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <com.google.android.material.button.MaterialButton
+    <com.google.android.material.textview.MaterialTextView
         android:id="@+id/resetBtn"
-        android:layout_width="wrap_content"
+        style="@style/TextAppearance.MaterialComponents.Headline3"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Reset"
-        android:alpha=".3"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toStartOf="@+id/newGameBtn"
-        app:layout_constraintStart_toStartOf="parent" />
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/newGameBtn"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Start Game"
-        android:alpha=".3"
-        app:layout_constraintStart_toEndOf="@+id/resetBtn"
+        android:layout_margin="15dp"
+        android:gravity="center"
+        android:text="@string/reset_game"
+        android:textColor="@color/colorPrimary"
+        android:visibility="gone"
+        android:elevation="1dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
 
-        app:layout_constraintHorizontal_chainStyle="spread_inside" />
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/newGameBtn"
+        style="@style/Widget.MaterialComponents.Button.TextButton.Dialog.Flush"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:text="@string/start_game"
+        android:textSize="32sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_chainStyle="spread_inside"
+        app:layout_constraintStart_toStartOf="parent"
+
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/pauseBtn"
+        style="@style/TextAppearance.MaterialComponents.Headline5"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:elevation="1dp"
+        android:layout_margin="16dp"
+        android:text="@string/pause"
+        android:textColor="@color/colorPrimary"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/barrier"
+        android:layout_width="match_parent"
+        android:layout_height="5dp"
+        android:src="@color/colorPrimaryDark"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.72" />
+
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/criticalArea"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:alpha="0.1"
+        android:elevation="0dp"
+        android:src="@color/colorPrimaryDark"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/barrier" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/fpsCount"
+        style="@style/TextAppearance.MaterialComponents.Headline6"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        android:elevation="1dp"
+        android:textColor="@color/colorPrimary"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="FPS" />
+
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/scoreCount"
+        style="@style/TextAppearance.MaterialComponents.Headline4"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:elevation="1dp"
+        android:layout_margin="16dp"
+        android:textColor="@color/colorPrimary"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:text="502/1025" />
 
 
 </androidx.constraintlayout.widget.ConstraintLayout>
