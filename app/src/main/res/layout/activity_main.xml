@@ -7,17 +7,57 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/gunOverheatLayout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:layout_marginStart="8dp"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/barrier">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="160dp"
+            android:alpha=".3"
+            android:elevation="1px"
+            android:src="@drawable/rounded_corner_shape_primary"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <ImageView
+            android:id="@+id/overheatView"
+            android:layout_width="0dp"
+            android:layout_height="1px"
+            app:layout_constraintBottom_toBottomOf="@+id/gunOverheatLayout"
+            app:layout_constraintEnd_toEndOf="@+id/gunOverheatLayout"
+            app:layout_constraintStart_toStartOf="@+id/gunOverheatLayout"
+            app:layout_constraintTop_toTopOf="@+id/gunOverheatLayout"
+            app:layout_constraintVertical_bias="1.0" />
+
+        <ImageView
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            android:src="@drawable/rounded_corner_shape_red"
+            app:layout_constraintTop_toBottomOf="@+id/overheatView" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/resetBtn"
         style="@style/TextAppearance.MaterialComponents.Headline3"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_margin="15dp"
+        android:elevation="1dp"
         android:gravity="center"
         android:text="@string/reset_game"
         android:textColor="@color/colorPrimary"
         android:visibility="gone"
-        android:elevation="1dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
@@ -41,8 +81,8 @@
         style="@style/TextAppearance.MaterialComponents.Headline5"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:elevation="1dp"
         android:layout_margin="16dp"
+        android:elevation="1dp"
         android:text="@string/pause"
         android:textColor="@color/colorPrimary"
         android:visibility="gone"
@@ -90,8 +130,8 @@
         style="@style/TextAppearance.MaterialComponents.Headline4"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:elevation="1dp"
         android:layout_margin="16dp"
+        android:elevation="1dp"
         android:textColor="@color/colorPrimary"
         android:visibility="gone"
         app:layout_constraintEnd_toEndOf="parent"
