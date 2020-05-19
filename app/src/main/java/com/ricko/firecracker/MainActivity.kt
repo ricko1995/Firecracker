@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.sqrt
 import kotlin.random.Random
 
@@ -33,22 +34,31 @@ class MainActivity : AppCompatActivity() {
 
 
     private var numberOfMeteors =
-        50                //** Should be lateinit and assigned based on level TODO
+        25                              //TODO(Should be lateinit and assigned based on level)
     private var barrierVerticalBias =
-        .7f           //** Should be lateinit and assigned based on level TODO
+        .7f                             //TODO(Should be lateinit and assigned based on level)
     private var gunHeatCapacity =
-        190                 //** Should be lateinit and assigned based on level TODO
+        352                             //TODO(Should be lateinit and assigned based on level)
     private var bulletSpeed =
-        30f                   //** Should be lateinit and assigned based on level TODO
+        50f                             //TODO(Should be lateinit and assigned based on level)
     private var maxMeteorSpeed =
-        8                  //** Should be lateinit and assigned based on level TODO
+        20                              //TODO(Should be lateinit and assigned based on level 50f should be max bullet speed, depends on min size of meteor)
     private var minMeteorSpeed =
-        3                  //** Should be lateinit and assigned based on level TODO
+        1                               //TODO(Should be lateinit and assigned based on level)
     private var coolingSpeed =
-        1                //** Should be lateinit and assigned based on level TODO
+        5                               //TODO(Should be lateinit and assigned based on level)
+    private var fireRate =
+        30L                             //TODO(Should be lateinit and assigned based on level)
+    private var meteorMaxHealth =
+        55L                             //TODO(Should be lateinit and assigned based on level)
+    private var meteorMinHealth =
+        50L                             //TODO(Should be lateinit and assigned based on level)
+
+    private val coolingDelay = 50L
 
     private val displayMetrics = DisplayMetrics()
-    private var isStarted = false
+    private var isGameRunning = false
+    private var whenPaused = 0L
     private var gameJob: Job? = null
     private var shootingJob: Job? = null
     private var stopShootingJob: Job? = null
@@ -56,12 +66,13 @@ class MainActivity : AppCompatActivity() {
     private var initialMeteorY = -500f
     private var isCriticalAreaActive = false
     private var activeExplosionCount = 0
+    private var activeHitCount = 0
     private var currentScore = 0
     private var meteorsCreated = 0
     private var currentBullet = 0
 
-    private var overheatBiasJob1: Job? = null
-    private var overheatBiasJob2: Job? = null
+    private var overheatBiasHeatingJob: Job? = null
+    private var overheatBiasCoolingJob: Job? = null
 
     companion object {
         const val MAX_NUMBER_OF_METEORS_IN_MOMENT = 25
@@ -110,11 +121,20 @@ class MainActivity : AppCompatActivity() {
 
         gameLayout.setOnTouchListener { _, motionEvent ->
 
-            if (motionEvent.action == MotionEvent.ACTION_DOWN) {
+            if (!isGameRunning && (System.currentTimeMillis() - whenPaused) > 1000) {
+                resetBtn.visibility = GONE
+                isGameRunning = !isGameRunning
+                gameJob = CoroutineScope(Main).launch {
+                    delay(1000)
+                    gameLoop()
+                }
+            }
+
+            if (motionEvent.action == MotionEvent.ACTION_DOWN && isGameRunning) {
                 stopShootingJob?.cancel()
                 stopShootingJob = null
                 shootingJob = CoroutineScope(Main).launch {
-                    outer@ while (motionEvent.action == MotionEvent.ACTION_DOWN || motionEvent.action == MotionEvent.ACTION_MOVE) {
+                    outer@ while ((motionEvent.action == MotionEvent.ACTION_DOWN || motionEvent.action == MotionEvent.ACTION_MOVE) && isGameRunning) {
                         for (i in 0 until gunHeatCapacity) {
                             if (currentBullet < gunHeatCapacity) {
                                 if (motionEvent.y > barrier.y) {
@@ -122,17 +142,17 @@ class MainActivity : AppCompatActivity() {
                                 }
                                 currentBullet++
                                 adjustOverheatBias(1f - currentBullet.toFloat() / gunHeatCapacity)
-                                delay(50)
+                                delay(fireRate)
                             } else break
                         }
                         break@outer
                     }
                     if (currentBullet >= gunHeatCapacity) delay(1000)
-                    while (currentBullet > 0) {
+                    while (currentBullet > 0 && isGameRunning) {
                         currentBullet -= coolingSpeed
                         currentBullet = if (currentBullet < 0) 0 else currentBullet
                         adjustOverheatBias(1f - currentBullet.toFloat() / gunHeatCapacity)
-                        delay(50)
+                        delay(coolingDelay)
                     }
                 }
 
@@ -140,11 +160,11 @@ class MainActivity : AppCompatActivity() {
                 shootingJob?.cancel()
                 shootingJob = null
                 stopShootingJob = CoroutineScope(Main).launch {
-                    while (currentBullet > 0) {
+                    while (currentBullet > 0 && isGameRunning) {
                         currentBullet -= coolingSpeed
                         currentBullet = if (currentBullet < 0) 0 else currentBullet
                         adjustOverheatBias(1f - currentBullet.toFloat() / gunHeatCapacity)
-                        delay(50)
+                        delay(coolingDelay)
                     }
                 }
             }
@@ -153,9 +173,10 @@ class MainActivity : AppCompatActivity() {
         }
 
     }
-    private fun adjustOverheatBiasZero(){
-        overheatBiasJob1?.cancel()
-        overheatBiasJob2?.cancel()
+
+    private fun adjustOverheatBiasZero() {
+        overheatBiasHeatingJob?.cancel()
+        overheatBiasCoolingJob?.cancel()
         val lParams = overheatView.layoutParams as ConstraintLayout.LayoutParams
         lParams.verticalBias = 1f
         overheatView.layoutParams = lParams
@@ -164,39 +185,29 @@ class MainActivity : AppCompatActivity() {
     private suspend fun adjustOverheatBias(overheatBias: Float) {
         val lParams = overheatView.layoutParams as ConstraintLayout.LayoutParams
         var vBias = lParams.verticalBias
-
         val biasDiff = abs(overheatBias - vBias)
-        println(biasDiff)
-        overheatBiasJob1?.cancel()
-        overheatBiasJob2?.cancel()
 
-        val biasDiffThreshold = 0.005f
+        overheatBiasHeatingJob?.cancel()
+        overheatBiasCoolingJob?.cancel()
 
-        if (biasDiff < biasDiffThreshold) {
-            overheatBiasJob1?.cancel()
-            overheatBiasJob2?.cancel()
-            lParams.verticalBias = overheatBias
-            overheatView.layoutParams = lParams
-        } else {
-            if (vBias > overheatBias) {
-                overheatBiasJob1 = CoroutineScope(Main).launch {
-                    while (vBias > overheatBias) {
-                        vBias -= biasDiffThreshold/gunHeatCapacity*5
-                        lParams.verticalBias = vBias
-                        overheatView.layoutParams = lParams
-                        delay(1)
-                        if (vBias < biasDiffThreshold) break
-                    }
+        if (vBias > overheatBias) {
+            overheatBiasHeatingJob = CoroutineScope(Main).launch {
+                while (vBias > overheatBias) {
+                    vBias -= biasDiff / (fireRate - 1)
+                    if (vBias < 0f) break
+                    lParams.verticalBias = vBias
+                    overheatView.layoutParams = lParams
+                    delay(1)
                 }
+            }
 
-            } else {
-                overheatBiasJob2 = CoroutineScope(Main).launch {
-                    while (vBias < overheatBias) {
-                        vBias += biasDiffThreshold/gunHeatCapacity*5
-                        lParams.verticalBias = vBias
-                        overheatView.layoutParams = lParams
-                        delay(1)
-                    }
+        } else {
+            overheatBiasCoolingJob = CoroutineScope(Main).launch {
+                while (vBias < overheatBias) {
+                    vBias += biasDiff / (coolingDelay - 1)
+                    lParams.verticalBias = vBias
+                    overheatView.layoutParams = lParams
+                    delay(1)
                 }
             }
         }
@@ -210,8 +221,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startGame() {
-        isStarted = !isStarted
-        if (isStarted) {
+        isGameRunning = !isGameRunning
+        if (isGameRunning) {
             resetBtn.visibility = GONE
             newGameBtn.visibility = GONE
             pauseBtn.visibility = VISIBLE
@@ -238,26 +249,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun pauseGame() {
-        isStarted = !isStarted
-        if (isStarted) {
-            resetBtn.visibility = GONE
-            gameJob = CoroutineScope(Main).launch {
-                gameLoop()
-            }
-        } else resetBtn.visibility = VISIBLE
-    }
-
-    private fun gameOver() {
-        isStarted = !isStarted
+        whenPaused = System.currentTimeMillis()
+        isGameRunning = false
         resetBtn.visibility = VISIBLE
-        criticalArea.clearAnimation()
     }
 
     private fun gameFinished() {
-        Toast.makeText(applicationContext, "jej you win", Toast.LENGTH_LONG).show()
-        isStarted = !isStarted
+        val msg =
+            if (currentScore.toFloat() / numberOfMeteors < 1f) "YEAH you win BUT YOU SUCK" else "YEAH you win"
+        Toast.makeText(applicationContext, msg, Toast.LENGTH_LONG).show()
+        isGameRunning = !isGameRunning
         gameJob?.cancel()
         gameJob = null
+        overheatBiasCoolingJob?.cancel()
+        overheatBiasCoolingJob = null
+        overheatBiasHeatingJob?.cancel()
+        overheatBiasHeatingJob = null
+        shootingJob?.cancel()
+        shootingJob = null
+        stopShootingJob?.cancel()
+        stopShootingJob = null
         newGameBtn.visibility = VISIBLE
         pauseBtn.visibility = GONE
         fpsCount.visibility = GONE
@@ -285,7 +296,7 @@ class MainActivity : AppCompatActivity() {
 
     private suspend fun gameLoop() {
         var t = System.currentTimeMillis()
-        while (isStarted) {
+        while (isGameRunning) {
             val startFrameTime = System.currentTimeMillis()
             updateFrame()
             val frameDuration = System.currentTimeMillis() - startFrameTime
@@ -329,7 +340,9 @@ class MainActivity : AppCompatActivity() {
                     meteor.moveMeteor()
                 }
                 meteor.meteorView.y - 150f > displayMetrics.heightPixels.toFloat() -> {
-                    gameOver()
+                    meteorsToRemove.add(meteor)
+                    gameLayout.removeView(meteor.meteorView)
+                    currentScore--
                 }
                 else -> {
                     meteor.moveMeteor()
@@ -340,18 +353,26 @@ class MainActivity : AppCompatActivity() {
                 if (bullet.bulletView.y in meteor.currentY..meteor.currentY + meteor.meteorView.layoutParams.height &&
                     bullet.bulletView.x + bullet.bulletView.layoutParams.width / 2 in meteor.currentX..meteor.currentX + meteor.meteorView.layoutParams.width
                 ) {
-                    makeExplosion(
-                        bullet.bulletView.x + bullet.bulletView.layoutParams.width / 2,
-                        bullet.bulletView.y
-                    )
-                    bulletsToRemove.add(bullet)
-                    meteorsToRemove.add(meteor)
-                    gameLayout.removeView(bullet.bulletView)
-                    gameLayout.removeView(meteor.meteorView)
+                    if (meteor.health > 0) {
+                        makeHittingMeteor(
+                            bullet.bulletView.x + bullet.bulletView.layoutParams.width / 2,
+                            meteor.meteorView.y + meteor.meteorView.layoutParams.height
+                        )
+                        meteor.health--
+                        bulletsToRemove.add(bullet)
+                        gameLayout.removeView(bullet.bulletView)
+                    } else {
+                        makeExplosion(
+                            meteor.meteorView.x + meteor.meteorView.layoutParams.width / 2,
+                            meteor.meteorView.y + meteor.meteorView.layoutParams.height / 2
+                        )
+                        meteorsToRemove.add(meteor)
+                        bulletsToRemove.add(bullet)
+                        gameLayout.removeView(meteor.meteorView)
+                        gameLayout.removeView(bullet.bulletView)
+                    }
                 }
             }
-
-
         }
 
         for (bullet in bullets) {
@@ -370,7 +391,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         currentScore += (meteorsOldSize - meteors.size)
-        scoreCount.text = ("$currentScore/$numberOfMeteors")
+        scoreCount.text = ("${floor(currentScore.toFloat() / numberOfMeteors * 1000) / 10}%")
 
         checkIfMeteorInCriticalArea()
     }
@@ -388,7 +409,7 @@ class MainActivity : AppCompatActivity() {
         if (isMeteorInCriticalArea) {
             if (!isCriticalAreaActive) {
                 criticalArea.setColorFilter(Color.RED)
-                criticalArea.alpha = .2f
+                criticalArea.alpha = .15f
                 criticalArea.startAnimation(AnimationUtils.loadAnimation(this, R.anim.blink))
                 isCriticalAreaActive = true
             }
@@ -397,6 +418,43 @@ class MainActivity : AppCompatActivity() {
             criticalArea.clearAnimation()
             criticalArea.alpha = .1f
             criticalArea.setColorFilter(R.color.colorPrimaryDark)
+        }
+    }
+
+    private fun makeHittingMeteor(locationX: Float, locationY: Float) {
+        CoroutineScope(Main).launch {
+            //TODO(create hit animation)
+//            val explosionView = ImageView(this@MainActivity)
+//            explosionView.id = View.generateViewId()
+//            explosionView.background =
+//                ContextCompat.getDrawable(
+//                    applicationContext,
+//                    R.drawable.ic_fullscreen_exit_black_24dp
+//                )
+//            explosionView.elevation = 10f
+//            gameLayout.addView(explosionView)
+//            explosionView.y = locationY
+//            explosionView.x = locationX - explosionView.layoutParams.width / 2
+//            explosionView.layoutParams.width = 50
+//            explosionView.layoutParams.height = 50
+//            explosionView.animate().scaleXBy(2.5f).scaleYBy(2.5f).withEndAction {
+//                gameLayout.removeView(explosionView)
+//            }.duration = 100
+            if (activeHitCount < 5) {
+                launch {
+                    withContext(IO) {
+                        activeHitCount++
+                        val sound = MediaPlayer.create(
+                            this@MainActivity,
+                            resources.getIdentifier("cans_hit", "raw", packageName)
+                        )
+                        sound.start()
+                        delay(100)
+                        sound.release()
+                        activeHitCount--
+                    }
+                }
+            }
         }
     }
 
@@ -446,10 +504,10 @@ class MainActivity : AppCompatActivity() {
             meteorView.elevation = 0f
 
             val meteor = Meteor(
-                sqrt(Random.nextInt(1, 10).toFloat()).toInt() * 40,     //size
-                Random.nextInt(minMeteorSpeed, maxMeteorSpeed).toFloat(),                //speed
+                sqrt(Random.nextInt(1, 2).toFloat()).toInt() * 60,      //size
+                Random.nextInt(minMeteorSpeed, maxMeteorSpeed).toFloat(),               //speed
                 Random.nextInt(30, 150) * PI.toFloat() / 180,       //direction
-                Random.nextLong(1, 100),                                     //health
+                Random.nextLong(meteorMinHealth, meteorMaxHealth),                      //health
                 initialMeteorX,
                 initialMeteorY,
                 meteorView
