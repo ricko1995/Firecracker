@@ -23,7 +23,6 @@ import kotlinx.coroutines.Dispatchers.Main
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.floor
-import kotlin.math.sqrt
 import kotlin.random.Random
 
 
@@ -34,25 +33,32 @@ class MainActivity : AppCompatActivity() {
 
 
     private var numberOfMeteors =
-        25                              //TODO(Should be lateinit and assigned based on level)
+        20                              //TODO(Should be lateinit and assigned based on level)
+    private var maxMeteorSpeed =
+        10                              //TODO(Should be lateinit and assigned based on level 50f should be max bullet speed, depends on min size of meteor)
+    private var minMeteorSpeed =
+        2                               //TODO(Should be lateinit and assigned based on level)
+    private var meteorMaxHealth =
+        15L                             //TODO(Should be lateinit and assigned based on level)
+    private var meteorMinHealth =
+        10L                             //TODO(Should be lateinit and assigned based on level)
+    private var meteorMinSize =
+        1                             //TODO(Should be lateinit and assigned based on level)
+    private var meteorMaxSize =
+        4                             //TODO(Should be lateinit and assigned based on level)
+
     private var barrierVerticalBias =
         .7f                             //TODO(Should be lateinit and assigned based on level)
-    private var gunHeatCapacity =
-        352                             //TODO(Should be lateinit and assigned based on level)
-    private var bulletSpeed =
-        50f                             //TODO(Should be lateinit and assigned based on level)
-    private var maxMeteorSpeed =
-        20                              //TODO(Should be lateinit and assigned based on level 50f should be max bullet speed, depends on min size of meteor)
-    private var minMeteorSpeed =
-        1                               //TODO(Should be lateinit and assigned based on level)
+
     private var coolingSpeed =
         5                               //TODO(Should be lateinit and assigned based on level)
+    private var gunHeatCapacity =
+        352                             //TODO(Should be lateinit and assigned based on level)
+
+    private var bulletSpeed =
+        15f                             //TODO(Should be lateinit and assigned based on level)
     private var fireRate =
         30L                             //TODO(Should be lateinit and assigned based on level)
-    private var meteorMaxHealth =
-        55L                             //TODO(Should be lateinit and assigned based on level)
-    private var meteorMinHealth =
-        50L                             //TODO(Should be lateinit and assigned based on level)
 
     private val coolingDelay = 50L
 
@@ -70,13 +76,21 @@ class MainActivity : AppCompatActivity() {
     private var currentScore = 0
     private var meteorsCreated = 0
     private var currentBullet = 0
+    private var meteorCreatedCount = 0
 
     private var overheatBiasHeatingJob: Job? = null
     private var overheatBiasCoolingJob: Job? = null
 
     companion object {
-        const val MAX_NUMBER_OF_METEORS_IN_MOMENT = 25
+        const val MAX_NUMBER_OF_METEORS_IN_MOMENT = 10
         const val GAME_FPS = 60L
+        const val METEOR_SIZE_MULTIPLIER = 60
+    }
+
+    override fun onBackPressed() {
+        if (!isGameRunning) {
+            super.onBackPressed()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,6 +109,7 @@ class MainActivity : AppCompatActivity() {
 
         newGameBtn.setOnClickListener {
             currentScore = 0
+            meteorCreatedCount = 0
             meteorsCreated = 0
             currentBullet = 0
             adjustOverheatBiasZero()
@@ -110,6 +125,7 @@ class MainActivity : AppCompatActivity() {
 
         resetBtn.setOnClickListener {
             currentScore = 0
+            meteorCreatedCount = 0
             meteorsCreated = 0
             currentBullet = 0
             adjustOverheatBiasZero()
@@ -256,7 +272,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun gameFinished() {
         val msg =
-            if (currentScore.toFloat() / numberOfMeteors < 1f) "YEAH you win BUT YOU SUCK" else "YEAH you win"
+            if (currentScore.toFloat() / meteorCreatedCount < 1f) "YEAH you win BUT YOU SUCK" else "YEAH you win"
         Toast.makeText(applicationContext, msg, Toast.LENGTH_LONG).show()
         isGameRunning = !isGameRunning
         gameJob?.cancel()
@@ -318,35 +334,15 @@ class MainActivity : AppCompatActivity() {
     private fun updateFrame() {
         val bulletsToRemove: ArrayList<Bullet> = arrayListOf()
         val meteorsToRemove: ArrayList<Meteor> = arrayListOf()
+        val meteorsToAdd: ArrayList<Meteor> = arrayListOf()
         if (meteors.size < MAX_NUMBER_OF_METEORS_IN_MOMENT && meteorsCreated < numberOfMeteors) createMeteors()
 
-        meteorLoop@ for (meteor in meteors) {
-            when {
-                meteor.meteorView.x + meteor.meteorView.layoutParams.width > displayMetrics.widthPixels.toFloat() -> {
-                    meteor.currentX =
-                        displayMetrics.widthPixels.toFloat() - meteor.meteorView.layoutParams.width
-                    meteor.direction = PI.toFloat() - meteor.direction
-                    if (meteor.direction > 2 * PI.toFloat()) {
-                        meteor.direction -= 2 * PI.toFloat()
-                    }
-                    meteor.moveMeteor()
-                }
-                meteor.meteorView.x < 0f -> {
-                    meteor.currentX = 0f
-                    meteor.direction = PI.toFloat() - meteor.direction
-                    if (meteor.direction < 0) {
-                        meteor.direction += 2 * PI.toFloat()
-                    }
-                    meteor.moveMeteor()
-                }
-                meteor.meteorView.y - 150f > displayMetrics.heightPixels.toFloat() -> {
-                    meteorsToRemove.add(meteor)
-                    gameLayout.removeView(meteor.meteorView)
-                    currentScore--
-                }
-                else -> {
-                    meteor.moveMeteor()
-                }
+        for (meteor in meteors) {
+
+            meteor.checkBoundaryHit(displayMetrics.widthPixels, displayMetrics.heightPixels, meteor)?.let {
+                meteorsToRemove.add(it)
+                gameLayout.removeView(it.meteorView)
+                currentScore--
             }
 
             for (bullet in bullets) {
@@ -354,18 +350,19 @@ class MainActivity : AppCompatActivity() {
                     bullet.bulletView.x + bullet.bulletView.layoutParams.width / 2 in meteor.currentX..meteor.currentX + meteor.meteorView.layoutParams.width
                 ) {
                     if (meteor.health > 0) {
-                        makeHittingMeteor(
-                            bullet.bulletView.x + bullet.bulletView.layoutParams.width / 2,
-                            meteor.meteorView.y + meteor.meteorView.layoutParams.height
+                        bulletHittingMeteor(
+                            bullet.bulletView
                         )
                         meteor.health--
                         bulletsToRemove.add(bullet)
-                        gameLayout.removeView(bullet.bulletView)
                     } else {
                         makeExplosion(
                             meteor.meteorView.x + meteor.meteorView.layoutParams.width / 2,
                             meteor.meteorView.y + meteor.meteorView.layoutParams.height / 2
                         )
+                        if (meteor.size / METEOR_SIZE_MULTIPLIER > 1) {
+                            meteorsToAdd.add(meteor)
+                        }
                         meteorsToRemove.add(meteor)
                         bulletsToRemove.add(bullet)
                         gameLayout.removeView(meteor.meteorView)
@@ -385,23 +382,48 @@ class MainActivity : AppCompatActivity() {
         for (bulletToRemove in bulletsToRemove) {
             bullets.remove(bulletToRemove)
         }
-        val meteorsOldSize = meteors.size
         for (meteorToRemove in meteorsToRemove) {
-            meteors.remove(meteorToRemove)
+            if (meteors.remove(meteorToRemove)) currentScore++
+        }
+        for (meteor in meteorsToAdd) {
+            createTwoNewMeteors(
+                meteor.meteorView.x + meteor.meteorView.layoutParams.width / 2,
+                meteor.meteorView.y + meteor.meteorView.layoutParams.height / 2,
+                meteor.size
+            )
         }
 
-        currentScore += (meteorsOldSize - meteors.size)
-        scoreCount.text = ("${floor(currentScore.toFloat() / numberOfMeteors * 1000) / 10}%")
+        scoreCount.text = ("${if (currentScore > 0) floor(currentScore.toFloat() / meteorCreatedCount * 1000) / 10 else 0}%")
 
         checkIfMeteorInCriticalArea()
     }
 
+    private fun createTwoNewMeteors(locationX: Float, locationY: Float, oldSize: Int) {
+        val newSize = oldSize / METEOR_SIZE_MULTIPLIER
+        createMeteors(
+            directionFrom = 210,
+            directionUntil = 260,
+            locationX = locationX,
+            locationY = locationY,
+            minSize = newSize - 1,
+            maxSize = newSize
+        )
+        createMeteors(
+            directionFrom = 280,
+            directionUntil = 330,
+            locationX = locationX,
+            locationY = locationY,
+            minSize = newSize - 1,
+            maxSize = newSize
+        )
+    }
+
     private fun checkIfMeteorInCriticalArea() {
         var isMeteorInCriticalArea = false
-        criticalAreaLoop@ for (meteor in meteors) {
+        for (meteor in meteors) {
             if (meteor.meteorView.y > barrier.y) {
                 isMeteorInCriticalArea = true
-                break@criticalAreaLoop
+                break
             } else {
                 isMeteorInCriticalArea = false
             }
@@ -421,25 +443,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun makeHittingMeteor(locationX: Float, locationY: Float) {
+    private fun bulletHittingMeteor(bulletView: ImageView) {
         CoroutineScope(Main).launch {
-            //TODO(create hit animation)
-//            val explosionView = ImageView(this@MainActivity)
-//            explosionView.id = View.generateViewId()
-//            explosionView.background =
-//                ContextCompat.getDrawable(
-//                    applicationContext,
-//                    R.drawable.ic_fullscreen_exit_black_24dp
-//                )
-//            explosionView.elevation = 10f
-//            gameLayout.addView(explosionView)
-//            explosionView.y = locationY
-//            explosionView.x = locationX - explosionView.layoutParams.width / 2
-//            explosionView.layoutParams.width = 50
-//            explosionView.layoutParams.height = 50
-//            explosionView.animate().scaleXBy(2.5f).scaleYBy(2.5f).withEndAction {
-//                gameLayout.removeView(explosionView)
-//            }.duration = 100
+            bulletView.animate().scaleX(10f).scaleY(0f).withEndAction {
+                gameLayout.removeView(bulletView)
+            }.duration = 120
+
             if (activeHitCount < 5) {
                 launch {
                     withContext(IO) {
@@ -494,7 +503,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun createMeteors(howMany: Int = 1) {
+    private fun createMeteors(
+        howMany: Int = 1,
+        directionFrom: Int = 30,
+        directionUntil: Int = 150,
+        minSize: Int = meteorMinSize,
+        maxSize: Int = meteorMaxSize,
+        locationX: Float = initialMeteorX,
+        locationY: Float = initialMeteorY
+    ) {
         for (i in 0 until howMany) {
             meteorsCreated++
             val meteorView = ImageView(this)
@@ -504,12 +521,12 @@ class MainActivity : AppCompatActivity() {
             meteorView.elevation = 0f
 
             val meteor = Meteor(
-                sqrt(Random.nextInt(1, 2).toFloat()).toInt() * 60,      //size
-                Random.nextInt(minMeteorSpeed, maxMeteorSpeed).toFloat(),               //speed
-                Random.nextInt(30, 150) * PI.toFloat() / 180,       //direction
-                Random.nextLong(meteorMinHealth, meteorMaxHealth),                      //health
-                initialMeteorX,
-                initialMeteorY,
+                Random.nextInt(minSize, maxSize) * METEOR_SIZE_MULTIPLIER,      //size
+                Random.nextInt(minMeteorSpeed, maxMeteorSpeed).toFloat(),                                    //speed
+                Random.nextInt(directionFrom, directionUntil) * PI.toFloat() / 180,                 //direction
+                Random.nextLong(meteorMinHealth, meteorMaxHealth),                                           //health
+                locationX,
+                locationY,
                 meteorView
             )
             meteors.add(meteor)
@@ -519,7 +536,8 @@ class MainActivity : AppCompatActivity() {
             meteors[index].meteorView.layoutParams.width = meteors[index].size
             meteors[index].meteorView.x = meteors[index].currentX
             meteors[index].meteorView.y = -meteors[index].size.toFloat()
-
+            meteors[index].moveMeteor()
+            meteorCreatedCount++
         }
     }
 
